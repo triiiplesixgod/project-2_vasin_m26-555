@@ -52,7 +52,7 @@ def print_welcome() -> None:
     print_help()
 
 
-def print_table(rows: list) -> None:
+def print_table(rows: list | None) -> None:
     if not rows:
         print("Записи не найдены.")
         return
@@ -101,9 +101,10 @@ def handle_insert(metadata: dict, rest: str) -> None:
         return
 
     table_data = load_table_data(table_name)
-    table_data = insert(metadata, table_name, table_data, values)
-    save_table_data(table_name, table_data)
+    result = insert(metadata, table_name, table_data, values)
 
+    if result is not None:
+        save_table_data(table_name, table_data)
 
 
 def handle_select(rest: str) -> None:
@@ -135,6 +136,7 @@ def handle_select(rest: str) -> None:
     result = select(table_data, where_clause)
     print_table(result)
 
+
 def handle_update(rest: str) -> None:
     """Обрабатывает команду update"""
     table_name, remainder = _extract_table_name(rest, "")
@@ -161,8 +163,10 @@ def handle_update(rest: str) -> None:
     where_clause = {column: value}
 
     table_data = load_table_data(table_name)
-    table_data = update(table_data, table_name, set_clause, where_clause)
-    save_table_data(table_name, table_data)
+    result = update(table_data, table_name, set_clause, where_clause)
+
+    if result is not None:
+        save_table_data(table_name, table_data)
 
 
 def handle_delete(rest: str) -> None:
@@ -189,8 +193,10 @@ def handle_delete(rest: str) -> None:
     where_clause = {column: value}
 
     table_data = load_table_data(table_name)
-    table_data = delete(table_data, table_name, where_clause)
-    save_table_data(table_name, table_data)
+    result = delete(table_data, table_name, where_clause)
+
+    if result is not None:
+        save_table_data(table_name, table_data)
 
 
 def run() -> None:
@@ -219,11 +225,12 @@ def run() -> None:
                 print(f"Ошибка разбора команды: {error}")
                 continue
             if not args:
-                print(f"Некорректное значение: {user_input}.")
+                print(f"Некорректное значение: {user_input}. Попробуйте снова.")
                 continue
             table_name, *columns = args
-            metadata = create_table(metadata, table_name, columns)
-            save_metadata(METADATA_FILE, metadata)
+            result = create_table(metadata, table_name, columns)
+            if result is not None:
+                save_metadata(METADATA_FILE, metadata)
 
         elif command == "drop_table":
             try:
@@ -232,10 +239,11 @@ def run() -> None:
                 print(f"Ошибка разбора команды: {error}")
                 continue
             if len(args) != 1:
-                print(f"Некорректное значение: {user_input}.")
+                print(f"Некорректное значение: {user_input}. Попробуйте снова.")
                 continue
-            metadata = drop_table(metadata, args[0])
-            save_metadata(METADATA_FILE, metadata)
+            result = drop_table(metadata, args[0])
+            if result is not None:
+                save_metadata(METADATA_FILE, metadata)
 
         elif command == "list_tables":
             list_tables(metadata)
@@ -259,7 +267,7 @@ def run() -> None:
                 print(f"Ошибка разбора команды: {error}")
                 continue
             if len(args) != 1:
-                print(f"Некорректное значение: {user_input}.")
+                print(f"Некорректное значение: {user_input}. Попробуйте снова.")
                 continue
             table_name = args[0]
             table_data = load_table_data(table_name)
@@ -269,4 +277,4 @@ def run() -> None:
             continue
 
         else:
-            print(f"Функции {command} нет.")
+            print(f"Функции {command} нет. Попробуйте снова.")

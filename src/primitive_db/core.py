@@ -1,23 +1,52 @@
+from primitive_db.decorators import (
+    confirm_action,
+    create_cacher,
+    handle_db_errors,
+    log_time,
+)
+
 ALLOWED_TYPES = {"int", "str", "bool"}
 
+_select_cache = create_cacher()
 
+
+def _is_valid_type(value, expected_type: str) -> bool:
+    """Проверяет, соответствует ли Python-значение ожидаемому типу столбца."""
+    if expected_type == "bool":
+        return isinstance(value, bool)
+    if expected_type == "int":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "str":
+        return isinstance(value, str)
+    return False
+
+
+def _filter_rows(table_data: list, where_clause: dict | None) -> list:
+    """Возвращает записи, соответствующие условию where"""
+    if not where_clause:
+        return table_data
+    return [
+        row
+        for row in table_data
+        if all(row.get(key) == value for key, value in where_clause.items())
+    ]
+
+
+@handle_db_errors
 def create_table(metadata: dict, table_name: str, columns: list[str]) -> dict:
     if table_name in metadata:
-        print(f'Ошибка: Таблица "{table_name}" уже существует.')
-        return metadata
+        raise ValueError(f'Ошибка: Таблица "{table_name}" уже существует.')
 
     parsed_columns = {"ID": "int"}
 
     for column in columns:
         if ":" not in column:
-            print(f"Некорректное значение: {column}. Попробуйте снова.")
-            return metadata
+            raise ValueError(f"Некорректное значение: {column}. Попробуйте снова.")
 
         column_name, column_type = column.split(":", 1)
 
         if not column_name or column_type not in ALLOWED_TYPES:
-            print(f"Некорректное значение: {column}. Попробуйте снова.")
-            return metadata
+            raise ValueError(f"Некорректное значение: {column}. Попробуйте снова.")
 
         parsed_columns[column_name] = column_type
 
@@ -31,10 +60,11 @@ def create_table(metadata: dict, table_name: str, columns: list[str]) -> dict:
     return metadata
 
 
+@confirm_action("удаление таблицы")
+@handle_db_errors
 def drop_table(metadata: dict, table_name: str) -> dict:
     if table_name not in metadata:
-        print(f'Ошибка: Таблица "{table_name}" не существует.')
-        return metadata
+        raise KeyError(f'Ошибка: Таблица "{table_name}" не существует.')
 
     del metadata[table_name]
     print(f'Таблица "{table_name}" успешно удалена.')
@@ -50,23 +80,12 @@ def list_tables(metadata: dict) -> None:
     for table_name in metadata:
         print(f"- {table_name}")
 
-def _is_valid_type(value, expected_type: str) -> bool:
-    """проверяет, соответствует ли Python-значение ожидаемому типу столбца"""
-    if expected_type == "bool":
-        return isinstance(value, bool)
-    if expected_type == "int":
-        return isinstance(value, int) and not isinstance(value, bool)
-    if expected_type == "str":
-        return isinstance(value, str)
-    return False
 
-
-def insert(
-    metadata: dict, table_name: str, table_data: list, values: list
-) -> list:
+@log_time
+@handle_db_errors
+def insert(metadata: dict, table_name: str, table_data: list, values: list) -> list:
     if table_name not in metadata:
-        print(f'Ошибка: Таблица "{table_name}" не существует.')
-        return table_data
+        raise KeyError(f'Ошибка: Таблица "{table_name}" не существует.')
 
     columns = metadata[table_name]["columns"]
     data_columns = {
@@ -74,16 +93,14 @@ def insert(
     }
 
     if len(values) != len(data_columns):
-        print(
+        raise ValueError(
             f"Некорректное значение: ожидается {len(data_columns)} "
-            f"значений, получено {len(values)}."
+            f"значений, получено {len(values)}. Попробуйте снова."
         )
-        return table_data
 
     for (column_name, column_type), value in zip(data_columns.items(), values):
         if not _is_valid_type(value, column_type):
-            print(f"Некорректное значение: {value}.")
-            return table_data
+            raise ValueError(f"Некорректное значение: {value}. Попробуйте снова.")
 
     new_id = max((row["ID"] for row in table_data), default=0) + 1
 
@@ -97,29 +114,29 @@ def insert(
     return table_data
 
 
+@log_time
+@handle_db_errors
 def select(table_data: list, where_clause: dict | None = None) -> list:
-    """Возвращает записи таблицы. Возможно добавление условия where"""
-    if not where_clause:
-        return table_data
+    """Возвращает записи таблицы, соответствующие условию where"""
+    cache_key = (
+        repr(table_data),
+        tuple(sorted(where_clause.items())) if where_clause else None,
+    )
 
-    return [
-        row
-        for row in table_data
-        if all(row.get(key) == value for key, value in where_clause.items())
-    ]
+    return _select_cache(cache_key, lambda: _filter_rows(table_data, where_clause))
 
 
+@handle_db_errors
 def update(
     table_data: list, table_name: str, set_clause: dict, where_clause: dict
 ) -> list:
-    matched = select(table_data, where_clause)
+    matched = _filter_rows(table_data, where_clause)
 
     if not matched:
-        print(
+        raise ValueError(
             f'Ошибка: Записи, соответствующие условию, '
             f'не найдены в таблице "{table_name}".'
         )
-        return table_data
 
     for row in matched:
         row.update(set_clause)
@@ -128,30 +145,32 @@ def update(
     return table_data
 
 
+@confirm_action("удаление записи")
+@handle_db_errors
 def delete(table_data: list, table_name: str, where_clause: dict) -> list:
-    matched = select(table_data, where_clause)
+    matched = _filter_rows(table_data, where_clause)
 
     if not matched:
-        print(
+        raise ValueError(
             f'Ошибка: Записи, соответствующие условию, '
             f'не найдены в таблице "{table_name}".'
         )
-        return table_data
 
     matched_ids = {row["ID"] for row in matched}
-    remaining = [row for row in table_data if row["ID"] not in matched_ids]
 
     for row_id in matched_ids:
         print(f'Запись с ID={row_id} успешно удалена из таблицы "{table_name}".')
 
-    return remaining
+    table_data[:] = [row for row in table_data if row["ID"] not in matched_ids]
+
+    return table_data
 
 
+@handle_db_errors
 def table_info(metadata: dict, table_name: str, table_data: list) -> None:
     """в примере задания есть функция info, хотя в задании ее нет, добавил здесь ее"""
     if table_name not in metadata:
-        print(f'Ошибка: Таблица "{table_name}" не существует.')
-        return
+        raise KeyError(f'Ошибка: Таблица "{table_name}" не существует.')
 
     columns = metadata[table_name]["columns"]
     columns_str = ", ".join(
