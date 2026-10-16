@@ -1,12 +1,17 @@
-import functools
 import time
+
 import prompt
 
 
-def handle_db_errors(func):
-    """Декоратор, централизующий обработку исключений операций с БД """
+def _copy_metadata(wrapper, func):
+    wrapper.__name__ = func.__name__
+    wrapper.__doc__ = func.__doc__
+    return wrapper
 
-    @functools.wraps(func)
+
+def handle_db_errors(func):
+    """Декоратор, централизующий обработку исключений операций с БД."""
+
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
@@ -23,14 +28,13 @@ def handle_db_errors(func):
             print(f"Произошла непредвиденная ошибка: {error}")
         return None
 
-    return wrapper
+    return _copy_metadata(wrapper, func)
 
 
 def confirm_action(action_name: str):
     """Фабрика декораторов: запрашивает подтверждение перед опасным действием."""
 
     def decorator(func):
-        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             answer = prompt.string(
                 f'Вы уверены, что хотите выполнить "{action_name}"? [y/n]: '
@@ -40,7 +44,7 @@ def confirm_action(action_name: str):
                 return None
             return func(*args, **kwargs)
 
-        return wrapper
+        return _copy_metadata(wrapper, func)
 
     return decorator
 
@@ -48,7 +52,6 @@ def confirm_action(action_name: str):
 def log_time(func):
     """Декоратор, замеряющий время выполнения функции."""
 
-    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         start = time.monotonic()
         result = func(*args, **kwargs)
@@ -56,7 +59,7 @@ def log_time(func):
         print(f"Функция {func.__name__} выполнилась за {elapsed:.3f} секунд.")
         return result
 
-    return wrapper
+    return _copy_metadata(wrapper, func)
 
 
 def create_cacher():

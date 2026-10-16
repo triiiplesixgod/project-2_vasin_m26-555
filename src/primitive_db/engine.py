@@ -1,7 +1,9 @@
 import shlex
+
 import prompt
 from prettytable import PrettyTable
 
+from primitive_db.constants import METADATA_FILE
 from primitive_db.core import (
     create_table,
     delete,
@@ -19,8 +21,6 @@ from primitive_db.utils import (
     save_metadata,
     save_table_data,
 )
-
-METADATA_FILE = "db_meta.json"
 
 
 def print_help() -> None:
@@ -66,7 +66,7 @@ def print_table(rows: list | None) -> None:
     print(table)
 
 
-def _extract_table_name(text: str, keyword_before: str) -> tuple[str, str]:
+def _extract_table_name(text: str) -> tuple[str, str]:
     parts = text.strip().split(maxsplit=1)
     table_name = parts[0] if parts else ""
     remainder = parts[1] if len(parts) > 1 else ""
@@ -80,7 +80,7 @@ def handle_insert(metadata: dict, rest: str) -> None:
         return
 
     rest = rest[len("into "):]
-    table_name, remainder = _extract_table_name(rest, "into")
+    table_name, remainder = _extract_table_name(rest)
 
     if not remainder.startswith("values"):
         print(f"Некорректное значение: {rest}. Попробуйте снова.")
@@ -117,7 +117,7 @@ def handle_select(rest: str) -> None:
         return
 
     rest = rest[len("from "):]
-    table_name, remainder = _extract_table_name(rest, "from")
+    table_name, remainder = _extract_table_name(rest)
 
     where_clause = None
     if remainder:
@@ -139,7 +139,7 @@ def handle_select(rest: str) -> None:
 
 def handle_update(rest: str) -> None:
     """Обрабатывает команду update"""
-    table_name, remainder = _extract_table_name(rest, "")
+    table_name, remainder = _extract_table_name(rest)
 
     if not remainder.startswith("set "):
         print(f"Некорректное значение: {remainder}. Попробуйте снова.")
@@ -176,7 +176,7 @@ def handle_delete(rest: str) -> None:
         return
 
     rest = rest[len("from "):]
-    table_name, remainder = _extract_table_name(rest, "from")
+    table_name, remainder = _extract_table_name(rest)
 
     if not remainder.startswith("where "):
         print(f"Некорректное значение: {remainder}. Попробуйте снова.")

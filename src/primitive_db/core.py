@@ -1,11 +1,16 @@
+from primitive_db.constants import (
+    DELETE_RECORD_ACTION,
+    DROP_TABLE_ACTION,
+    ID_COLUMN_NAME,
+    ID_COLUMN_TYPE,
+    VALID_TYPES,
+)
 from primitive_db.decorators import (
     confirm_action,
     create_cacher,
     handle_db_errors,
     log_time,
 )
-
-ALLOWED_TYPES = {"int", "str", "bool"}
 
 _select_cache = create_cacher()
 
@@ -37,7 +42,7 @@ def create_table(metadata: dict, table_name: str, columns: list[str]) -> dict:
     if table_name in metadata:
         raise ValueError(f'Ошибка: Таблица "{table_name}" уже существует.')
 
-    parsed_columns = {"ID": "int"}
+    parsed_columns = {ID_COLUMN_NAME: ID_COLUMN_TYPE}
 
     for column in columns:
         if ":" not in column:
@@ -45,7 +50,7 @@ def create_table(metadata: dict, table_name: str, columns: list[str]) -> dict:
 
         column_name, column_type = column.split(":", 1)
 
-        if not column_name or column_type not in ALLOWED_TYPES:
+        if not column_name or column_type not in VALID_TYPES:
             raise ValueError(f"Некорректное значение: {column}. Попробуйте снова.")
 
         parsed_columns[column_name] = column_type
@@ -60,7 +65,7 @@ def create_table(metadata: dict, table_name: str, columns: list[str]) -> dict:
     return metadata
 
 
-@confirm_action("удаление таблицы")
+@confirm_action(DROP_TABLE_ACTION)
 @handle_db_errors
 def drop_table(metadata: dict, table_name: str) -> dict:
     if table_name not in metadata:
@@ -89,7 +94,7 @@ def insert(metadata: dict, table_name: str, table_data: list, values: list) -> l
 
     columns = metadata[table_name]["columns"]
     data_columns = {
-        name: col_type for name, col_type in columns.items() if name != "ID"
+        name: col_type for name, col_type in columns.items() if name != ID_COLUMN_NAME
     }
 
     if len(values) != len(data_columns):
@@ -102,9 +107,9 @@ def insert(metadata: dict, table_name: str, table_data: list, values: list) -> l
         if not _is_valid_type(value, column_type):
             raise ValueError(f"Некорректное значение: {value}. Попробуйте снова.")
 
-    new_id = max((row["ID"] for row in table_data), default=0) + 1
+    new_id = max((row[ID_COLUMN_NAME] for row in table_data), default=0) + 1
 
-    record = {"ID": new_id}
+    record = {ID_COLUMN_NAME: new_id}
     for (column_name, _), value in zip(data_columns.items(), values):
         record[column_name] = value
 
@@ -140,12 +145,15 @@ def update(
 
     for row in matched:
         row.update(set_clause)
-        print(f'Запись с ID={row["ID"]} в таблице "{table_name}" успешно обновлена.')
+        print(
+            f'Запись с ID={row[ID_COLUMN_NAME]} в таблице "{table_name}" '
+            f"успешно обновлена."
+        )
 
     return table_data
 
 
-@confirm_action("удаление записи")
+@confirm_action(DELETE_RECORD_ACTION)
 @handle_db_errors
 def delete(table_data: list, table_name: str, where_clause: dict) -> list:
     matched = _filter_rows(table_data, where_clause)
@@ -156,12 +164,14 @@ def delete(table_data: list, table_name: str, where_clause: dict) -> list:
             f'не найдены в таблице "{table_name}".'
         )
 
-    matched_ids = {row["ID"] for row in matched}
+    matched_ids = {row[ID_COLUMN_NAME] for row in matched}
 
     for row_id in matched_ids:
         print(f'Запись с ID={row_id} успешно удалена из таблицы "{table_name}".')
 
-    table_data[:] = [row for row in table_data if row["ID"] not in matched_ids]
+    table_data[:] = [
+        row for row in table_data if row[ID_COLUMN_NAME] not in matched_ids
+    ]
 
     return table_data
 
